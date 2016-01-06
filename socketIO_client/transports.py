@@ -8,6 +8,8 @@ import time
 import websocket
 from six import string_types
 
+import socketIO_client
+
 from .exceptions import ConnectionError, TimeoutError
 from .parsers import (
     encode_engineIO_content, decode_engineIO_content,
@@ -157,9 +159,15 @@ class WebsocketTransport(AbstractTransport):
         yield engineIO_packet_type, engineIO_packet_data
 
     def send_packet(self, engineIO_packet_type, engineIO_packet_data=''):
-        packet = format_packet_text(engineIO_packet_type, engineIO_packet_data)
+        if isinstance(engineIO_packet_data, socketIO_client.Binary):
+            packet = engineIO_packet_data
+            opcode = 2
+        else:
+            packet = format_packet_text(engineIO_packet_type, engineIO_packet_data)
+            opcode = 1
+
         try:
-            self._connection.send(packet)
+            self._connection.send(packet, opcode=opcode)
         except websocket.WebSocketTimeoutException as e:
             raise TimeoutError('send timed out (%s)' % e)
         except socket.error as e:
