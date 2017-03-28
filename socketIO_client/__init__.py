@@ -8,12 +8,11 @@ from .namespaces import (
     LoggingSocketIONamespace, find_callback, make_logging_prefix)
 from .parsers import (
     parse_host, parse_engineIO_session,
-    format_socketIO_packet_data, parse_socketIO_packet_data,
+    format_socketIO_packet_data, format_socketIO_packet_binary_data, parse_socketIO_packet_data,
     get_namespace_path)
 from .symmetries import get_character
 from .transports import (
     WebsocketTransport, XHR_PollingTransport, prepare_http_session, TRANSPORTS)
-
 
 __all__ = 'SocketIO', 'SocketIONamespace'
 __version__ = '0.7.2'
@@ -29,11 +28,11 @@ def retry(f):
         except (TimeoutError, ConnectionError):
             self._opened = False
             return f(*args, **kw)
+
     return wrap
 
 
 class EngineIO(LoggingMixin):
-
     def __init__(
             self, host, port=None, Namespace=EngineIONamespace,
             wait_for_connection=True, transports=TRANSPORTS,
@@ -42,6 +41,7 @@ class EngineIO(LoggingMixin):
         self._wait_for_connection = wait_for_connection
         self._client_transports = transports
         self._hurry_interval_in_seconds = hurry_interval_in_seconds
+
         self._http_session = prepare_http_session(kw)
 
         self._log_name = self._url
@@ -199,10 +199,12 @@ class EngineIO(LoggingMixin):
         if not hasattr(self, '_opened') or not self._opened:
             return
         engineIO_packet_type = 1
+
         try:
             self._transport_instance.send_packet(engineIO_packet_type)
         except (TimeoutError, ConnectionError):
             pass
+
         self._opened = False
 
     def _ping(self, engineIO_packet_data=''):
@@ -432,6 +434,25 @@ class SocketIO(EngineIO):
         socketIO_packet_data = format_socketIO_packet_data(path, ack_id, args)
         self._message(str(socketIO_packet_type) + socketIO_packet_data)
 
+    def emit_binary(self, event, *args, **kw):
+        path = kw.get('path', '')
+        callback, args = find_callback(args, kw)
+        ack_id = self._set_ack_callback(callback) if callback else None
+        args = [event] + list(args)
+
+        packets = format_socketIO_packet_binary_data(path, ack_id, args)
+
+        if isinstance(packets, list):
+            socketIO_packet_type = 5  # Binary
+            for packet in packets:
+                if isinstance(packet, Binary):
+                    self._message(packet)
+                else:
+                    self._message(str(socketIO_packet_type) + "1-" + packet)
+        else:
+            socketIO_packet_type = 2  # Text
+            self._message(str(socketIO_packet_type) + packets)
+
     def send(self, data='', callback=None, **kw):
         path = kw.get('path', '')
         args = [data]
@@ -543,3 +564,7 @@ class SocketIO(EngineIO):
     @property
     def _has_ack_callback(self):
         return True if self._callback_by_ack_id else False
+
+
+class Binary(bytes):
+    pass

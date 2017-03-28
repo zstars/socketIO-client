@@ -25,6 +25,8 @@ from .parsers import (
     format_packet_text, parse_packet_text)
 from .symmetries import SSLError, memoryview
 
+import socketIO_client
+
 
 ENGINEIO_PROTOCOL = 3
 TRANSPORTS = 'xhr-polling', 'websocket'
@@ -159,7 +161,13 @@ class WebsocketTransport(AbstractTransport):
         yield engineIO_packet_type, engineIO_packet_data
 
     def send_packet(self, engineIO_packet_type, engineIO_packet_data=''):
-        packet = format_packet_text(engineIO_packet_type, engineIO_packet_data)
+        if isinstance(engineIO_packet_data, socketIO_client.Binary):
+            packet = engineIO_packet_data
+            opcode = 2
+        else:
+            packet = format_packet_text(engineIO_packet_type, engineIO_packet_data)
+            opcode = 1
+
         try:
             self._connection.send(packet)
         except WebSocketTimeoutException as e:

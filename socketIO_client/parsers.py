@@ -1,10 +1,13 @@
 import json
 import six
 from collections import namedtuple
+
 from six.moves.urllib.parse import urlparse as parse_url
 
-from .symmetries import decode_string, encode_string, get_byte, get_character
+import socketIO_client
 
+
+from .symmetries import decode_string, encode_string, get_byte, get_character
 
 EngineIOSession = namedtuple('EngineIOSession', [
     'id', 'ping_interval', 'ping_timeout', 'transport_upgrades'])
@@ -61,6 +64,37 @@ def format_socketIO_packet_data(path=None, ack_id=None, args=None):
     if path:
         socketIO_packet_data = path + ',' + socketIO_packet_data
     return socketIO_packet_data
+
+
+def format_socketIO_packet_binary_data(path=None, ack_id=None, args=None):
+    data = args[1]
+    stubbed_data = None
+    packets = []
+
+    if isinstance(data, socketIO_client.Binary):
+        pass
+    elif isinstance(data, dict):
+        stubbed_data = data.copy()
+        binary_packets = []
+
+        for key in stubbed_data:
+            if isinstance(data[key], socketIO_client.Binary):
+                binary_packets.append(data[key])
+                stubbed_data[key] = {"_placeholder": True, "num": len(binary_packets) - 1}
+
+        if len(binary_packets) > 0:
+            stubbed_data = format_socketIO_packet_data(path=path, ack_id=ack_id, args=[args[0], stubbed_data])
+            stubbed_data = "1-" + stubbed_data  # Indicates attachment? Maybe number of attachments?
+            packets.append(stubbed_data)
+            packets += binary_packets
+
+    elif isinstance(data, list):
+        pass
+
+    if len(packets) > 0:
+        return packets
+    else:
+        return format_socketIO_packet_data(path=path, ack_id=ack_id, args=args)
 
 
 def parse_socketIO_packet_data(socketIO_packet_data):
